@@ -1,5 +1,5 @@
-package Models;
-public class Etudiant extends Personne {
+package org.example.demo.Models;
+public class Etudiant extends Models.Personne {
     private String filiere;
     private int heuresCours;
     private int satisfaction; // 0 à 100

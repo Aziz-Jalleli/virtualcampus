@@ -1,6 +1,5 @@
-package model;
+package org.example.demo.Models;
 
-import Models.Personne;
 
 public class Professeur extends Personne {
     private String matiere;

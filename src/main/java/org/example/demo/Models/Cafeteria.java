@@ -1,4 +1,7 @@
-package Models;
+package org.example.demo.Models;
+
+import org.example.demo.Models.Batiment;
+
 public class Cafeteria extends Batiment {
 
     public Cafeteria(int id, String nom, int capacite, double cons_res) {

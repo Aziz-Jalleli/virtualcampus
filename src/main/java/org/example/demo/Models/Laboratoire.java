@@ -1,6 +1,5 @@
-package model;
+package org.example.demo.Models;
 
-import Models.Batiment;
 
 public class Laboratoire extends Batiment {
 
