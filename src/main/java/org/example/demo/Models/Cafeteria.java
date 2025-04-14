@@ -4,8 +4,8 @@ import org.example.demo.Models.Batiment;
 
 public class Cafeteria extends Batiment {
 
-    public Cafeteria(int id, String nom, int capacite, double cons_res) {
-        super(id, nom, "Cafétéria", capacite, cons_res, 6);
+    public Cafeteria(int id, String nom, int capacite, double cons_res,int gridX,int gridY) {
+        super(id, nom, "Cafétéria", capacite, cons_res, 6,gridX,gridY);
     }
 
     @Override

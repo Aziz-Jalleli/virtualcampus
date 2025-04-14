@@ -1,8 +1,8 @@
 package org.example.demo.Models;
 public class Bibliotheque extends Batiment {
 
-    public Bibliotheque(int id, String nom, int capacite, double cons_res) {
-        super(id, nom, "Bibliothèque", capacite, cons_res, 8);
+    public Bibliotheque(int id, String nom, int capacite, double cons_res,int gridX,int gridY ) {
+        super(id, nom, "Bibliothèque", capacite, cons_res, 8,gridX,gridY);
     }
 
     @Override

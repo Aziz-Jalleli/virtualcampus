@@ -6,12 +6,17 @@ public class Batiment {
     private String type;
     private double cons_res;
     private int satisfaction;
-    public Batiment(int id, String nom, String type, double cons_res, double consRes, int satisfaction) {
+    private int gridX;
+    private int gridZ;
+
+    public Batiment(int id, String nom, String type, double cons_res, double consRes, int satisfaction,int gridX,int gridZ) {
         this.id=id;
         this.nom=nom;
         this.type=type;
         this.cons_res=cons_res;
         this.satisfaction=satisfaction;
+        this.gridX=gridX;
+        this.gridZ=gridZ;
     }
 
     public int getId() {

@@ -229,7 +229,8 @@ public class Grid3D extends Application {
             }
 
             // Place le nouveau bâtiment
-            placeBuilding(coord.x, coord.z, currentBuildingType);
+            showBuildingInfoDialog(coord.x, coord.z, currentBuildingType);
+
         }
     }
 
@@ -308,6 +309,49 @@ public class Grid3D extends Application {
             cameraTranslate.setZ(cameraTranslate.getZ() + zoom);
         });
     }
+    private void showBuildingInfoDialog(int gridX, int gridZ, BuildingType type) {
+        Stage dialog = new Stage();
+        dialog.setTitle("Enter Building Information");
+
+        // UI Elements
+        javafx.scene.control.Label nameLabel = new javafx.scene.control.Label("Building Name:");
+        javafx.scene.control.TextField nameField = new javafx.scene.control.TextField();
+
+
+        javafx.scene.control.Label floorsLabel = new javafx.scene.control.Label("Number of Floors:");
+        javafx.scene.control.TextField floorsField = new javafx.scene.control.TextField();
+
+        Button saveButton = new Button("Save");
+        saveButton.setDefaultButton(true);
+
+        saveButton.setOnAction(e -> {
+            String name = nameField.getText();
+            String floors = floorsField.getText();
+            // You can store this data or print it out
+            System.out.println("Building Name: " + name);
+            System.out.println("Floors: " + floors);
+
+            dialog.close();
+            placeBuilding(gridX, gridZ, type); // Place after input
+        });
+
+        javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.setVgap(10);
+        grid.setHgap(10);
+        grid.setPadding(new Insets(10));
+
+        grid.add(nameLabel, 0, 0);
+        grid.add(nameField, 1, 0);
+        grid.add(floorsLabel, 0, 1);
+        grid.add(floorsField, 1, 1);
+        grid.add(saveButton, 1, 2);
+
+        Scene dialogScene = new Scene(grid, 300, 200);
+        dialog.setScene(dialogScene);
+        dialog.initOwner(scene.getWindow()); // Link to the main window
+        dialog.show();
+    }
+
 
     // Class to store grid coordinates
     private static class GridCoordinate {
@@ -323,4 +367,5 @@ public class Grid3D extends Application {
     public static void main(String[] args) {
         launch(args);
     }
+
 }
