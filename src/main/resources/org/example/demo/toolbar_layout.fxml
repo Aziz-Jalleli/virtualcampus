@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.*?>
+<?import javafx.scene.shape.Rectangle?>
+<?import javafx.scene.text.Text?>
+
+<BorderPane xmlns:fx="http://javafx.com/fxml" fx:controller="org.example.demo.controller.ToolbarController"
+            styleClass="main-container">
+
+    <!-- Menu Bar at the top -->
+    <top>
+        <MenuBar styleClass="menu-bar">
+            <!-- Building Menu -->
+            <Menu styleClass="menu-bar" text="Building">
+                <MenuItem styleClass="color1" fx:id="createCafeteriaItem" text="Create Cafeteria"/>
+                <MenuItem styleClass="color1" fx:id="createLibraryItem" text="Create Library"/>
+                <MenuItem styleClass="color1" fx:id="createLaboratoryItem" text="Create Laboratory"/>
+                <MenuItem styleClass="color1" fx:id="createClassroomItem" text="Create Classroom"/>
+                <SeparatorMenuItem/>
+                <MenuItem styleClass="color1" fx:id="exitItem" text="Exit"/>
+            </Menu>
+
+            <Menu text="Edit">
+                <MenuItem text="Preferences"/>
+            </Menu>
+
+            <!-- View Menu -->
+            <Menu text="View">
+                <CheckMenuItem text="Show Grid" selected="true"/>
+            </Menu>
+        </MenuBar>
+    </top>
+
+    <!-- Content area -->
+    <center>
+        <StackPane styleClass="content-area">
+            <AnchorPane fx:id="viewerPane" prefWidth="100" prefHeight="100">
+                <!-- GridPane for buildings -->
+                <GridPane fx:id="buildingGrid" vgap="10" hgap="30" alignment="CENTER">
+                    <!-- Dynamic buildings will be added here -->
+                </GridPane>
+            </AnchorPane>
+        </StackPane>
+    </center>
+
+    <bottom>
+        <HBox styleClass="status-bar">
+            <Label text="Ready"/>
+        </HBox>
+    </bottom>
+</BorderPane>
