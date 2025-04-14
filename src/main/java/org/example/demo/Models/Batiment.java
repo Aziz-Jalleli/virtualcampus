@@ -1,4 +1,4 @@
-package Models;
+package org.example.demo.Models;
 
 public class Batiment {
     private int id;

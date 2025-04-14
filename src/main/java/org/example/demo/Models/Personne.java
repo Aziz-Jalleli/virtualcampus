@@ -1,4 +1,4 @@
-package Models;
+package org.example.demo.Models;
 
 public abstract class Personne {
     private int id;

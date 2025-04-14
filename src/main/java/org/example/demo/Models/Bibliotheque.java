@@ -1,5 +1,5 @@
 package org.example.demo.Models;
-public class Bibliotheque extends Models.Batiment {
+public class Bibliotheque extends Batiment {
 
     public Bibliotheque(int id, String nom, int capacite, double cons_res) {
         super(id, nom, "Bibliothèque", capacite, cons_res, 8);
