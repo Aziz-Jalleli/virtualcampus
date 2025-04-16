@@ -4,19 +4,21 @@ public class Batiment {
     private int id;
     private String nom;
     private String type;
-    private double cons_res;
+    private int Capacite;
+    private int cons_res;
     private int satisfaction;
     private int gridX;
     private int gridZ;
 
-    public Batiment(int id, String nom, String type, double cons_res, double consRes, int satisfaction,int gridX,int gridZ) {
-        this.id=id;
-        this.nom=nom;
-        this.type=type;
-        this.cons_res=cons_res;
-        this.satisfaction=satisfaction;
-        this.gridX=gridX;
-        this.gridZ=gridZ;
+    public Batiment(int id, String nom, String type, int Capacite, int cons_res, int satisfaction, int gridX, int gridZ) {
+        this.id = id;
+        this.nom = nom;
+        this.type = type;
+        this.Capacite = Capacite;
+        this.cons_res = cons_res;
+        this.satisfaction = satisfaction;
+        this.gridX = gridX;
+        this.gridZ = gridZ;
     }
 
     public int getId() {
@@ -27,7 +29,7 @@ public class Batiment {
         return type;
     }
 
-    public double getCons_res() {
+    public int getCons_res() {
         return cons_res;
     }
 
@@ -37,6 +39,14 @@ public class Batiment {
 
     public String getNom() {
         return nom;
+    }
+
+    public int getGridX() {
+        return gridX;
+    }
+
+    public int getGridZ() {
+        return gridZ;
     }
 
     public void setId(int id) {
@@ -51,16 +61,31 @@ public class Batiment {
         this.type = type;
     }
 
-    public void setCons_res(double cons_res) {
+    public void setCons_res(int cons_res) {
         this.cons_res = cons_res;
     }
 
     public void setSatisfaction(int satisfaction) {
         this.satisfaction = satisfaction;
     }
+
+    public void setGridX(int gridX) {
+        this.gridX = gridX;
+    }
+
+    public void setGridZ(int gridZ) {
+        this.gridZ = gridZ;
+    }
+
     public void utiliser() {
     }
+
     public String toString() {
-        return "Bâtiment: " + nom + ", Adresse: " + type;
+        return "Bâtiment: " + nom + ", Type: " + type;
+    }
+
+    public int getCapacite() {
+
+        return Capacite;
     }
 }

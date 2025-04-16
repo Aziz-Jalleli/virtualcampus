@@ -3,7 +3,7 @@ package org.example.demo.Models;
 
 public class Laboratoire extends Batiment {
 
-    public Laboratoire(int id, String nom, int capacite, double cons_res,int gridX,int gridY) {
+    public Laboratoire(int id, String nom, int capacite, int cons_res,int gridX,int gridY) {
         super(id, nom, "Laboratoire", capacite, cons_res, 7,gridX,gridY);
     }
 
