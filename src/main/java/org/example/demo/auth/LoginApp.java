@@ -9,7 +9,9 @@ import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
+import org.example.demo.CampusUI;
 import org.example.demo.DBConnection;
+import org.example.demo.Models.UserSession;
 import org.example.demo.ToolbarExample;
 
 import java.sql.Connection;
@@ -69,12 +71,16 @@ public class LoginApp extends Application {
                         ResultSet rs = stmt.executeQuery();
 
                         if (rs.next()) {
+                            int userId = rs.getInt("id"); // or whatever column name for user id
+                            String name = rs.getString("name");
+                            String emailResult = rs.getString("email");
+                            UserSession.createInstance(userId);
                             messageLabel.setTextFill(Color.LIGHTGREEN);
                             messageLabel.setText("Welcome, " + rs.getString("name") + "!");
-                            ToolbarExample Toolbar = new ToolbarExample();
+                            CampusUI campus = new CampusUI();
                             try {
                                 Stage stage = new Stage();
-                                Toolbar.start(stage);
+                                campus.start(stage);
                                 primaryStage.close();
                             } catch (Exception ex) {
                                 ex.printStackTrace();

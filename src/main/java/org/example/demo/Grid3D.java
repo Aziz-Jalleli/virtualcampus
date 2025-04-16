@@ -1,14 +1,15 @@
 package org.example.demo;
+import org.example.demo.Models.*;
 
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.geometry.Point2D;
 import javafx.scene.*;
 import javafx.scene.control.Button;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
+import javafx.scene.control.Alert;
 import javafx.scene.input.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -19,7 +20,10 @@ import javafx.scene.transform.Rotate;
 import javafx.scene.transform.Translate;
 import javafx.stage.Stage;
 
+import java.sql.*;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class Grid3D extends Application {
@@ -27,6 +31,8 @@ public class Grid3D extends Application {
     private final Group root = new Group();
     private final Group gridGroup = new Group();
     private final Group buildingsGroup = new Group();
+    private Campus c = Campus.getInstance();
+    private List<Batiment> batiments = new ArrayList<>();
 
     private final int gridSize = 20;
     private final double cellSize = 100;
@@ -40,8 +46,31 @@ public class Grid3D extends Application {
 
     private static final double MOVE_SPEED = 50;
 
+    public Campus getC() {
+        return c;
+    }
+
+    public void setC(Campus c) {
+        this.c = c;
+        initBatiments();
+    }
+
     private enum BuildingType {
-        NONE, SALLE, BIBLIOTHEQUE, CAFE, LABORATOIRE
+        NONE(""),
+        SALLE("SalleCours"),
+        BIBLIOTHEQUE("Bibliotheque"),
+        CAFE("Cafeteria"),
+        LABORATOIRE("Laboratoire");
+
+        private final String dbValue;
+
+        BuildingType(String dbValue) {
+            this.dbValue = dbValue;
+        }
+
+        public String getDbValue() {
+            return dbValue;
+        }
     }
 
     private BuildingType currentBuildingType = BuildingType.NONE;
@@ -55,6 +84,42 @@ public class Grid3D extends Application {
     private PerspectiveCamera camera;
     private Scene scene;
 
+    private void initBatiments() {
+        if (c != null) {
+            if (c.getBatiments() != null) {
+                batiments = c.getBatiments();
+                System.out.println("Initialized with " + batiments.size() + " buildings from Campus ID " + c.getId());
+            } else {
+                batiments = new ArrayList<>();
+                c.setBatiments(batiments);
+                System.out.println("Created new empty batiments list for Campus ID " + c.getId());
+            }
+        } else {
+            System.out.println("Campus instance is null, creating a new one");
+            c = new Campus("New Campus");
+            batiments = new ArrayList<>();
+            c.setBatiments(batiments);
+        }
+    }
+    private void debugBatiments() {
+        System.out.println("==== DEBUG BATIMENTS ====");
+        if (batiments == null) {
+            System.out.println("Batiments list is null");
+            return;
+        }
+
+        System.out.println("Number of batiments: " + batiments.size());
+        for (Batiment b : batiments) {
+            System.out.println("ID: " + b.getId() +
+                    ", Nom: " + b.getNom() +
+                    ", Type: " + b.getType() +
+                    ", Class: " + b.getClass().getSimpleName() +
+                    ", GridX: " + b.getGridX() +
+                    ", GridZ: " + b.getGridZ());
+        }
+        System.out.println("========================");
+    }
+
     @Override
     public void start(Stage primaryStage) {
         // Initialize building colors
@@ -62,6 +127,8 @@ public class Grid3D extends Application {
         buildingColors.put(BuildingType.BIBLIOTHEQUE, Color.INDIANRED);
         buildingColors.put(BuildingType.CAFE, Color.DARKSEAGREEN);
         buildingColors.put(BuildingType.LABORATOIRE, Color.GOLD);
+
+        initBatiments();
 
         // Initialize building grid
         for (int i = 0; i < gridSize; i++) {
@@ -72,6 +139,9 @@ public class Grid3D extends Application {
 
         buildGrid();
         root.getChildren().addAll(gridGroup, buildingsGroup);
+
+        debugBatiments();
+        loadExistingBuildings();
 
         // Camera setup
         camera = new PerspectiveCamera(true);
@@ -120,38 +190,151 @@ public class Grid3D extends Application {
         mainLayout.requestFocus();
     }
 
+    private void loadExistingBuildings() {
+        if (batiments == null || batiments.isEmpty()) return;
+
+        System.out.println("Loading " + batiments.size() + " existing buildings");
+
+        for (Batiment batiment : batiments) {
+            try {
+                // Determine the BuildingType based on the actual class or stored type
+                BuildingType type;
+
+                // First try to match based on class type
+                if (batiment instanceof SalleCours) {
+                    type = BuildingType.SALLE;
+                } else if (batiment instanceof Bibliotheque) {
+                    type = BuildingType.BIBLIOTHEQUE;
+                } else if (batiment instanceof Cafeteria) {
+                    type = BuildingType.CAFE;
+                } else if (batiment instanceof Laboratoire) {
+                    type = BuildingType.LABORATOIRE;
+                } else {
+                    // Fall back to the stored type string
+                    String typeStr = batiment.getType().toUpperCase();
+
+                    // Match the stored type string with our enum
+                    switch (typeStr) {
+                        case "SALLECOURS":
+                        case "SALLE":
+                            type = BuildingType.SALLE;
+                            break;
+                        case "BIBLIOTHEQUE":
+                            type = BuildingType.BIBLIOTHEQUE;
+                            break;
+                        case "CAFETERIA":
+                        case "CAFE":
+                            type = BuildingType.CAFE;
+                            break;
+                        case "LABORATOIRE":
+                            type = BuildingType.LABORATOIRE;
+                            break;
+                        default:
+                            System.err.println("Unknown building type: " + typeStr);
+                            continue; // Skip this building
+                    }
+                }
+
+                int gridX = batiment.getGridX();
+                int gridZ = batiment.getGridZ();
+                String name = batiment.getNom();
+
+                // Debug output
+                System.out.println("Loading building: " + name + " of type " + type + " at position (" + gridX + "," + gridZ + ")");
+
+                // Check grid bounds
+                if (gridX < 0 || gridX >= gridSize || gridZ < 0 || gridZ >= gridSize) {
+                    System.err.println("Building out of grid bounds: " + name);
+                    continue;
+                }
+
+                // Update grid state and place building visually
+                if (buildingGrid[gridX][gridZ] == BuildingType.NONE) {
+                    buildingGrid[gridX][gridZ] = type;
+
+                    // Create the visual representation - determine floors based on building height if applicable
+                    int floors = 1; // Default
+                    if (batiment instanceof SalleCours) {
+                        SalleCours salle = (SalleCours) batiment;
+                        // If SalleCours has a getEtages() method or similar
+                        // floors = salle.getEtages();
+                    }
+
+                    Box buildingVisual = createBuildingVisual(type, floors);
+
+                    // Calculate world position
+                    double worldX = (gridX - gridSize/2) * cellSize;
+                    double worldZ = (gridZ - gridSize/2) * cellSize;
+
+                    buildingVisual.setTranslateX(worldX);
+                    buildingVisual.setTranslateZ(worldZ);
+                    buildingVisual.setUserData(new GridCoordinate(gridX, gridZ));
+
+                    // Store reference to the model in the visual object
+                    buildingVisual.getProperties().put("model", batiment);
+
+                    buildingsGroup.getChildren().add(buildingVisual);
+                } else {
+                    System.err.println("Grid position already occupied: (" + gridX + ", " + gridZ + ")");
+                }
+            } catch (Exception e) {
+                System.err.println("Error loading building: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+    }
+
     private HBox createToolbar() {
-        HBox toolbar = new HBox(10);
-        toolbar.setPadding(new Insets(10));
+        HBox toolbar = new HBox(12); // spacing between elements
+        toolbar.setPadding(new Insets(15));
         toolbar.setAlignment(Pos.CENTER);
-        toolbar.setStyle("-fx-background-color: #dddddd;");
+        toolbar.setStyle("-fx-background-color: linear-gradient(to right, #ece9e6, #ffffff);" +
+                "-fx-border-color: #cccccc; -fx-border-width: 0 0 1 0;");
 
         ToggleGroup buildingGroup = new ToggleGroup();
 
-        ToggleButton salleBtn = new ToggleButton("Salle");
-        salleBtn.setToggleGroup(buildingGroup);
+        ToggleButton backButton = new ToggleButton("⟵");
+        styleToggleButton(backButton, "#ff6b6b");
+        backButton.setTooltip(new Tooltip("Go back"));
+        backButton.setToggleGroup(buildingGroup);
+        backButton.setOnAction(e -> {
+            CampusUI campus = new CampusUI();
+            Stage stage = new Stage();
+            campus.start(stage);
+            Stage currentStage = (Stage) backButton.getScene().getWindow();
+            currentStage.close();
+        });
+
+        ToggleButton salleBtn = new ToggleButton("🏫 Salle");
+        styleToggleButton(salleBtn, "#74b9ff");
         salleBtn.setTooltip(new Tooltip("Place a classroom"));
-        salleBtn.setOnAction(e -> currentBuildingType = BuildingType.SALLE);
+        salleBtn.setToggleGroup(buildingGroup);
+        salleBtn.setOnAction(e -> currentBuildingType = salleBtn.isSelected() ? BuildingType.SALLE : BuildingType.NONE);
 
-        ToggleButton biblioBtn = new ToggleButton("Bibliothèque");
-        biblioBtn.setToggleGroup(buildingGroup);
+        ToggleButton biblioBtn = new ToggleButton("📚 Bibliothèque");
+        styleToggleButton(biblioBtn, "#55efc4");
         biblioBtn.setTooltip(new Tooltip("Place a library"));
-        biblioBtn.setOnAction(e -> currentBuildingType = BuildingType.BIBLIOTHEQUE);
+        biblioBtn.setToggleGroup(buildingGroup);
+        biblioBtn.setOnAction(e -> currentBuildingType = biblioBtn.isSelected() ? BuildingType.BIBLIOTHEQUE : BuildingType.NONE);
 
-        ToggleButton cafeBtn = new ToggleButton("Café");
-        cafeBtn.setToggleGroup(buildingGroup);
+        ToggleButton cafeBtn = new ToggleButton("☕ Café");
+        styleToggleButton(cafeBtn, "#ffeaa7");
         cafeBtn.setTooltip(new Tooltip("Place a cafe"));
-        cafeBtn.setOnAction(e -> currentBuildingType = BuildingType.CAFE);
+        cafeBtn.setToggleGroup(buildingGroup);
+        cafeBtn.setOnAction(e -> currentBuildingType = cafeBtn.isSelected() ? BuildingType.CAFE : BuildingType.NONE);
 
-        ToggleButton labBtn = new ToggleButton("Laboratoire");
-        labBtn.setToggleGroup(buildingGroup);
+        ToggleButton labBtn = new ToggleButton("🔬 Laboratoire");
+        styleToggleButton(labBtn, "#a29bfe");
         labBtn.setTooltip(new Tooltip("Place a laboratory"));
-        labBtn.setOnAction(e -> currentBuildingType = BuildingType.LABORATOIRE);
+        labBtn.setToggleGroup(buildingGroup);
+        labBtn.setOnAction(e -> currentBuildingType = labBtn.isSelected() ? BuildingType.LABORATOIRE : BuildingType.NONE);
 
-        Button clearBtn = new Button("Clear");
+        Button clearBtn = new Button("🧹 Clear");
+        styleButton(clearBtn, "#fab1a0");
         clearBtn.setTooltip(new Tooltip("Clear all buildings"));
         clearBtn.setOnAction(e -> {
             buildingsGroup.getChildren().clear();
+            batiments.clear();
             for (int i = 0; i < gridSize; i++) {
                 for (int j = 0; j < gridSize; j++) {
                     buildingGrid[i][j] = BuildingType.NONE;
@@ -161,8 +344,35 @@ public class Grid3D extends Application {
             currentBuildingType = BuildingType.NONE;
         });
 
-        toolbar.getChildren().addAll(salleBtn, biblioBtn, cafeBtn, labBtn, clearBtn);
+        Button saveBtn = new Button("💾 Save");
+        styleButton(saveBtn, "#81ecec");
+        saveBtn.setTooltip(new Tooltip("Save campus to database"));
+        saveBtn.setOnAction(e -> saveCampusToDatabase());
+
+        toolbar.getChildren().addAll(backButton, salleBtn, biblioBtn, cafeBtn, labBtn, clearBtn, saveBtn);
         return toolbar;
+    }
+
+    private void styleToggleButton(ToggleButton button, String bgColor) {
+        button.setStyle("-fx-background-color: " + bgColor + ";" +
+                "-fx-text-fill: black;" +
+                "-fx-font-weight: bold;" +
+                "-fx-background-radius: 15;" +
+                "-fx-padding: 8 16;" +
+                "-fx-cursor: hand;");
+        button.setOnMouseEntered(e -> button.setOpacity(0.85));
+        button.setOnMouseExited(e -> button.setOpacity(1.0));
+    }
+
+    private void styleButton(Button button, String bgColor) {
+        button.setStyle("-fx-background-color: " + bgColor + ";" +
+                "-fx-text-fill: black;" +
+                "-fx-font-weight: bold;" +
+                "-fx-background-radius: 15;" +
+                "-fx-padding: 8 16;" +
+                "-fx-cursor: hand;");
+        button.setOnMouseEntered(e -> button.setOpacity(0.85));
+        button.setOnMouseExited(e -> button.setOpacity(1.0));
     }
 
     private void buildGrid() {
@@ -182,6 +392,120 @@ public class Grid3D extends Application {
             }
         }
     }
+    private void showBuildingDetailsDialog(Box buildingVisual) {
+        // Get the building model from the visual representation
+        Batiment batiment = (Batiment) buildingVisual.getProperties().get("model");
+        if (batiment == null) {
+            showAlert("Error", "Building data not found");
+            return;
+        }
+
+        GridCoordinate coord = (GridCoordinate) buildingVisual.getUserData();
+
+        Stage dialog = new Stage();
+        dialog.setTitle("Building Details");
+
+        // Create UI elements for displaying building info
+        javafx.scene.layout.VBox content = new javafx.scene.layout.VBox(10);
+        content.setPadding(new Insets(20));
+
+        // Basic building info
+        javafx.scene.control.Label nameLabel = new javafx.scene.control.Label("Name: " + batiment.getNom());
+        javafx.scene.control.Label typeLabel = new javafx.scene.control.Label("Type: " + batiment.getType());
+        javafx.scene.control.Label capacityLabel = new javafx.scene.control.Label("Capacity: " + batiment.getCapacite());
+        javafx.scene.control.Label consumptionLabel = new javafx.scene.control.Label("Resource Consumption: " + batiment.getCons_res());
+        javafx.scene.control.Label satisfactionLabel = new javafx.scene.control.Label("Satisfaction Impact: " + batiment.getSatisfaction());
+        javafx.scene.control.Label positionLabel = new javafx.scene.control.Label("Position: (" + batiment.getGridX() + ", " + batiment.getGridZ() + ")");
+
+        // Add type-specific info
+        if (batiment instanceof SalleCours) {
+            SalleCours salle = (SalleCours) batiment;
+
+        } else if (batiment instanceof Bibliotheque) {
+            Bibliotheque biblio = (Bibliotheque) batiment;
+            // Add library-specific details if available
+        } else if (batiment instanceof Cafeteria) {
+            Cafeteria cafe = (Cafeteria) batiment;
+            // Add cafe-specific details if available
+        } else if (batiment instanceof Laboratoire) {
+            Laboratoire lab = (Laboratoire) batiment;
+            // Add lab-specific details if available
+        }
+
+        // Delete button
+        Button deleteButton = new Button("Delete Building");
+        deleteButton.setStyle("-fx-background-color: #ff5555;");
+        deleteButton.setOnAction(e -> {
+            // Delete the building
+            deleteBuilding(batiment.getId(),coord.x, coord.z);
+            dialog.close();
+        });
+
+        // Close button
+        Button closeButton = new Button("Close");
+        closeButton.setDefaultButton(true);
+        closeButton.setOnAction(e -> dialog.close());
+
+        // Button container
+        HBox buttons = new HBox(10);
+        buttons.setAlignment(Pos.CENTER_RIGHT);
+        buttons.getChildren().addAll(deleteButton, closeButton);
+
+        // Add all elements to the content
+        content.getChildren().addAll(
+                nameLabel, typeLabel, capacityLabel,
+                consumptionLabel, satisfactionLabel, positionLabel,
+                new javafx.scene.control.Separator(),
+                buttons
+        );
+
+        Scene dialogScene = new Scene(content, 350, 300);
+        dialog.setScene(dialogScene);
+        dialog.initOwner(scene.getWindow());
+        dialog.show();
+    }
+
+    private void deleteBuilding(int id,int gridX, int gridZ) {
+        // Remove the building from the visual representation
+        buildingsGroup.getChildren().removeIf(building -> {
+            if (building.getUserData() instanceof GridCoordinate) {
+                GridCoordinate buildingCoord = (GridCoordinate) building.getUserData();
+                return buildingCoord.x == gridX && buildingCoord.z == gridZ;
+            }
+            return false;
+        });
+
+        // Find and remove the Batiment from our model list
+        batiments.removeIf(batiment ->
+                batiment.getGridX() == gridX &&
+                        batiment.getGridZ() == gridZ);
+
+        // Clear the grid position
+        buildingGrid[gridX][gridZ] = BuildingType.NONE;
+
+        // Update campus state
+        deleteBuildingFromDatabase(id);
+        updateCampusState();
+
+        showAlert("Building Deleted", "Building at position (" + gridX + ", " + gridZ + ") has been removed");
+    }
+    private void deleteBuildingFromDatabase(int id) {
+        String sql = "DELETE FROM batiments WHERE id = ?";
+        Connection conn = DBConnection.connect();
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, id);
+            int rows = pstmt.executeUpdate();
+            if (rows == 0) {
+                System.out.println("No building found in the database at (" + id + ", " + id + ")");
+            } else {
+                System.out.println("Building at (" + id + ", " + id + ") deleted from the database.");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            showAlert("Database Error", "Could not delete building from the database.");
+        }
+    }
+
 
     private void handleGridClick(MouseEvent event) {
         double mouseX = event.getX();
@@ -193,6 +517,12 @@ public class Grid3D extends Application {
         }
 
         Node pickedNode = pickResult.getIntersectedNode();
+        if (pickedNode instanceof Box && pickedNode.getParent() == buildingsGroup) {
+            // Show building details window
+            showBuildingDetailsDialog((Box) pickedNode);
+            return;
+        }
+
 
         if (pickedNode instanceof Box && pickedNode.getParent() == gridGroup) {
             GridCoordinate coord = (GridCoordinate) pickedNode.getUserData();
@@ -200,6 +530,7 @@ public class Grid3D extends Application {
             // Suppression par clic droit
             if (event.getButton() == MouseButton.SECONDARY) {
                 if (buildingGrid[coord.x][coord.z] != BuildingType.NONE) {
+                    // Remove the building from the visual representation
                     buildingsGroup.getChildren().removeIf(building -> {
                         if (building.getUserData() instanceof GridCoordinate) {
                             GridCoordinate buildingCoord = (GridCoordinate) building.getUserData();
@@ -207,6 +538,12 @@ public class Grid3D extends Application {
                         }
                         return false;
                     });
+
+                    // Find and remove the Batiment from our model list
+                    batiments.removeIf(batiment ->
+                            batiment.getGridX() == coord.x &&
+                                    batiment.getGridZ() == coord.z);
+
                     buildingGrid[coord.x][coord.z] = BuildingType.NONE;
                 }
                 return;
@@ -217,8 +554,9 @@ public class Grid3D extends Application {
                 return;
             }
 
-            // S’il y a déjà un bâtiment, on l’enlève pour le remplacer
+            // S'il y a déjà un bâtiment, on l'enlève pour le remplacer
             if (buildingGrid[coord.x][coord.z] != BuildingType.NONE) {
+                // Remove from visual representation
                 buildingsGroup.getChildren().removeIf(building -> {
                     if (building.getUserData() instanceof GridCoordinate) {
                         GridCoordinate buildingCoord = (GridCoordinate) building.getUserData();
@@ -226,15 +564,19 @@ public class Grid3D extends Application {
                     }
                     return false;
                 });
+
+                // Remove from model list
+                batiments.removeIf(batiment ->
+                        batiment.getGridX() == coord.x &&
+                                batiment.getGridZ() == coord.z);
             }
 
             // Place le nouveau bâtiment
             showBuildingInfoDialog(coord.x, coord.z, currentBuildingType);
-
         }
     }
 
-    private void placeBuilding(int gridX, int gridZ, BuildingType type) {
+    private void placeBuilding(int gridX, int gridZ, BuildingType type, String name, int floors) {
         // Update grid state
         buildingGrid[gridX][gridZ] = type;
 
@@ -242,42 +584,68 @@ public class Grid3D extends Application {
         double worldX = (gridX - gridSize/2) * cellSize;
         double worldZ = (gridZ - gridSize/2) * cellSize;
 
-        // Create building based on type
-        Box building = createBuildingModel(type);
-        building.setTranslateX(worldX);
-        building.setTranslateZ(worldZ);
-        building.setUserData(new GridCoordinate(gridX, gridZ));
+        // Create both the visual 3D box and the model instance
+        Batiment batimentModel = createBatimentModel(gridX, gridZ, type, name);
+        Box buildingVisual = createBuildingVisual(type, floors);
 
-        buildingsGroup.getChildren().add(building);
+        // Add the model to our list
+        batiments.add(batimentModel);
+
+        // Set up the visual representation
+        buildingVisual.setTranslateX(worldX);
+        buildingVisual.setTranslateZ(worldZ);
+        buildingVisual.setUserData(new GridCoordinate(gridX, gridZ));
+
+        // Store reference to the model in the visual object
+        buildingVisual.getProperties().put("model", batimentModel);
+
+        buildingsGroup.getChildren().add(buildingVisual);
     }
 
-    private Box createBuildingModel(BuildingType type) {
-        double height;
-        double width = cellSize * 0.8;
-        double depth = cellSize * 0.8;
-        PhongMaterial material = new PhongMaterial();
+    // Create the actual Batiment model object
+    private Batiment createBatimentModel(int gridX, int gridZ, BuildingType type, String name) {
+        // Generate an ID (in a real app, this would likely come from the database)
+        int id = 0; // Will be set by database on insert
 
-        // Set height and color based on building type
+        // Capacity is calculated based on floors (arbitrary formula for example)
+        int capacity = 25;
+
+        // Consumption depends on building type and size
+        int consumption = 10;
+
+        // Default satisfaction impact
+        int satisfaction = 5;
+
+        // Create the appropriate subclass based on type
         switch (type) {
             case SALLE:
-                height = 40;
-                material.setDiffuseColor(buildingColors.get(BuildingType.SALLE));
-                break;
+                return new SalleCours(id, name, capacity, consumption, satisfaction, 1, gridX, gridZ);
             case BIBLIOTHEQUE:
-                height = 80;
-                material.setDiffuseColor(buildingColors.get(BuildingType.BIBLIOTHEQUE));
-                break;
+                return new Bibliotheque(id, name, capacity, consumption, gridX, gridZ);
             case CAFE:
-                height = 30;
-                material.setDiffuseColor(buildingColors.get(BuildingType.CAFE));
-                break;
+                return new Cafeteria(id, name, capacity, consumption, gridX, gridZ);
             case LABORATOIRE:
-                height = 60;
-                material.setDiffuseColor(buildingColors.get(BuildingType.LABORATOIRE));
-                break;
+                return new Laboratoire(id, name, capacity, consumption, gridX, gridZ);
             default:
-                height = 50;
-                material.setDiffuseColor(Color.GRAY);
+                return new Batiment(id, name, "Generic", capacity, consumption, satisfaction, gridX, gridZ);
+        }
+    }
+
+    // Create just the visual 3D representation
+    private Box createBuildingVisual(BuildingType type, int floors) {
+        double width = cellSize * 0.8;
+        double depth = cellSize * 0.8;
+        double baseHeight = 20; // Base height per floor
+        double height = floors * baseHeight;
+
+        PhongMaterial material = new PhongMaterial();
+
+        // Set color based on building type
+        Color color = buildingColors.get(type);
+        if (color != null) {
+            material.setDiffuseColor(color);
+        } else {
+            material.setDiffuseColor(Color.GRAY);
         }
 
         Box model = new Box(width, height, depth);
@@ -309,6 +677,7 @@ public class Grid3D extends Application {
             cameraTranslate.setZ(cameraTranslate.getZ() + zoom);
         });
     }
+
     private void showBuildingInfoDialog(int gridX, int gridZ, BuildingType type) {
         Stage dialog = new Stage();
         dialog.setTitle("Enter Building Information");
@@ -316,23 +685,63 @@ public class Grid3D extends Application {
         // UI Elements
         javafx.scene.control.Label nameLabel = new javafx.scene.control.Label("Building Name:");
         javafx.scene.control.TextField nameField = new javafx.scene.control.TextField();
-
+        nameField.setText(type.toString() + " " + (batiments.size() + 1)); // Default name
 
         javafx.scene.control.Label floorsLabel = new javafx.scene.control.Label("Number of Floors:");
         javafx.scene.control.TextField floorsField = new javafx.scene.control.TextField();
+        floorsField.setText("1"); // Default value
+
+        // Add specific fields based on building type
+        javafx.scene.control.Label specificLabel = null;
+        javafx.scene.control.TextField specificField = null;
+
+        switch(type) {
+            case SALLE:
+                specificLabel = new javafx.scene.control.Label("Room Number:");
+                specificField = new javafx.scene.control.TextField();
+                specificField.setText(String.valueOf(100 + batiments.size()));
+                break;
+            case BIBLIOTHEQUE:
+                specificLabel = new javafx.scene.control.Label("Book Capacity:");
+                specificField = new javafx.scene.control.TextField();
+                specificField.setText("5000");
+                break;
+            case CAFE:
+                specificLabel = new javafx.scene.control.Label("Seat Capacity:");
+                specificField = new javafx.scene.control.TextField();
+                specificField.setText("50");
+                break;
+            case LABORATOIRE:
+                specificLabel = new javafx.scene.control.Label("Lab Type:");
+                specificField = new javafx.scene.control.TextField();
+                specificField.setText("Research");
+                break;
+        }
 
         Button saveButton = new Button("Save");
         saveButton.setDefaultButton(true);
 
+        javafx.scene.control.TextField finalSpecificField = specificField;
         saveButton.setOnAction(e -> {
             String name = nameField.getText();
-            String floors = floorsField.getText();
-            // You can store this data or print it out
-            System.out.println("Building Name: " + name);
-            System.out.println("Floors: " + floors);
+            int floors;
+            try {
+                floors = Integer.parseInt(floorsField.getText());
+                if (floors < 1) floors = 1;
+            } catch (NumberFormatException ex) {
+                floors = 1; // Default if parsing fails
+            }
+
+            // Specific field value (if applicable)
+            String specificValue = finalSpecificField != null ? finalSpecificField.getText() : "";
+
+            // Store this data in your model
+            placeBuilding(gridX, gridZ, type, name, floors);
+
+            // Optionally update the campus (if needed)
+            updateCampusState();
 
             dialog.close();
-            placeBuilding(gridX, gridZ, type); // Place after input
         });
 
         javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
@@ -340,11 +749,19 @@ public class Grid3D extends Application {
         grid.setHgap(10);
         grid.setPadding(new Insets(10));
 
-        grid.add(nameLabel, 0, 0);
-        grid.add(nameField, 1, 0);
-        grid.add(floorsLabel, 0, 1);
-        grid.add(floorsField, 1, 1);
-        grid.add(saveButton, 1, 2);
+        int rowIndex = 0;
+        grid.add(nameLabel, 0, rowIndex);
+        grid.add(nameField, 1, rowIndex++);
+
+        grid.add(floorsLabel, 0, rowIndex);
+        grid.add(floorsField, 1, rowIndex++);
+
+        if (specificLabel != null && specificField != null) {
+            grid.add(specificLabel, 0, rowIndex);
+            grid.add(specificField, 1, rowIndex++);
+        }
+
+        grid.add(saveButton, 1, rowIndex);
 
         Scene dialogScene = new Scene(grid, 300, 200);
         dialog.setScene(dialogScene);
@@ -352,6 +769,151 @@ public class Grid3D extends Application {
         dialog.show();
     }
 
+    // Helper method to update the campus state after changes
+    private void updateCampusState() {
+        if (c != null) {
+            c.setBatiments(batiments);
+        }
+    }
+
+    private void saveCampusToDatabase() {
+        if (c == null) {
+            showAlert("Error", "Campus object is null");
+            return;
+        }
+
+        try (Connection conn = DBConnection.connect()) {
+            if (conn == null) {
+                showAlert("Database Error", "Could not connect to database");
+                return;
+            }
+
+            conn.setAutoCommit(false);  // Start transaction
+
+            // Ensure we have a campus name
+            if (c.getNom() == null || c.getNom().trim().isEmpty()) {
+                c.setNom("Campus " + System.currentTimeMillis());
+            }
+
+            // Handle campus insert/update
+            try (PreparedStatement campusStmt = conn.prepareStatement(
+                    c.getId() > 0 ?
+                            "UPDATE campus SET nom = ?, user_id = ? WHERE id = ?" :
+                            "INSERT INTO campus (nom, user_id) VALUES (?, ?)",
+                    Statement.RETURN_GENERATED_KEYS)) {
+
+                if (c.getId() > 0) {
+                    campusStmt.setString(1, c.getNom());
+                    campusStmt.setInt(2, c.getUserId());
+                    campusStmt.setInt(3, c.getId());
+                } else {
+                    campusStmt.setString(1, c.getNom());
+                    campusStmt.setInt(2, c.getUserId() > 0 ? c.getUserId() : 1); // Default user ID if not set
+                }
+
+                int rows = campusStmt.executeUpdate();
+
+                if (rows == 0) {
+                    throw new SQLException("Creating/updating campus failed, no rows affected.");
+                }
+
+                // Get generated ID for new campus
+                if (c.getId() <= 0) {
+                    try (ResultSet rs = campusStmt.getGeneratedKeys()) {
+                        if (rs.next()) {
+                            int newId = rs.getInt(1);
+                            c.setId(newId);
+                            System.out.println("New campus ID: " + newId);
+                        } else {
+                            throw new SQLException("Creating campus failed, no ID obtained.");
+                        }
+                    }
+                }
+            }
+
+
+            // Delete existing buildings if updating
+            if (c.getId() > 0) {
+                try (PreparedStatement deleteStmt = conn.prepareStatement(
+                        "DELETE FROM batiments WHERE campus_id = ?")) {
+                    deleteStmt.setInt(1, c.getId());
+                    deleteStmt.executeUpdate();
+                }
+            }
+
+            // Batch insert new buildings
+            if (!batiments.isEmpty()) {
+                Ressource totalRessources = c.getRessources();
+                try (PreparedStatement batimentStmt = conn.prepareStatement(
+                        "INSERT INTO batiments (nom, type, capacite, consommation_ressources, impact_satisfaction, campus_id, gridx, gridz) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+
+                    for (Batiment batiment : batiments) {
+                        // Determine the type string based on the class
+                        String typeStr;
+                        if (batiment instanceof SalleCours) {
+                            typeStr = BuildingType.SALLE.getDbValue();
+                        } else if (batiment instanceof Bibliotheque) {
+                            typeStr = BuildingType.BIBLIOTHEQUE.getDbValue();
+                        } else if (batiment instanceof Cafeteria) {
+                            typeStr = BuildingType.CAFE.getDbValue();
+                        } else if (batiment instanceof Laboratoire) {
+                            typeStr = BuildingType.LABORATOIRE.getDbValue();
+                        } else {
+                            typeStr = batiment.getType();
+                        }
+
+                        batimentStmt.setString(1, batiment.getNom());
+                        batimentStmt.setString(2, typeStr);
+                        batimentStmt.setInt(3, batiment.getCapacite());
+                        batimentStmt.setInt(4, batiment.getCons_res());
+                        batimentStmt.setInt(5, batiment.getSatisfaction());
+                        batimentStmt.setInt(6, c.getId());
+                        batimentStmt.setInt(7, batiment.getGridX());
+                        batimentStmt.setInt(8, batiment.getGridZ());
+                        batimentStmt.addBatch();
+                        totalRessources = new Ressource(
+                                totalRessources.getWifi() + batiment.getCons_res(),
+                                totalRessources.getElectricite() + batiment.getCons_res(),
+                                totalRessources.getEau() +batiment.getCons_res(),
+                                totalRessources.getEspace() + batiment.getCons_res()
+                        );
+                    }
+                    try (PreparedStatement resStmt = conn.prepareStatement(
+                            "UPDATE ressources SET wifi = ?, electricite = ?, eau = ?, espace = ? WHERE campus_id = ?")) {
+
+
+                        resStmt.setDouble(1, totalRessources.getWifi());
+                        resStmt.setDouble(2, totalRessources.getElectricite());
+                        resStmt.setDouble(3, totalRessources.getEau());
+                        resStmt.setDouble(4, totalRessources.getEspace());
+                        resStmt.setInt(5, c.getId());
+
+                        resStmt.executeUpdate();
+                    }
+
+
+                    int[] results = batimentStmt.executeBatch();
+                    System.out.println("Inserted " + results.length + " buildings");
+                }
+            }
+
+            conn.commit();  // Commit transaction
+            showAlert("Success", "Campus saved successfully");
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+            showAlert("Database Error", "Error saving to database: " + e.getMessage());
+        }
+    }
+
+    // Helper method to show alerts
+    private void showAlert(String title, String content) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        alert.showAndWait();
+    }
 
     // Class to store grid coordinates
     private static class GridCoordinate {
@@ -367,5 +929,4 @@ public class Grid3D extends Application {
     public static void main(String[] args) {
         launch(args);
     }
-
 }
