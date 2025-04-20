@@ -2,7 +2,7 @@ package org.example.demo.Models;
 public class SalleCours extends Batiment {
     private int num;
     public SalleCours(int id, String nom, int capacite, int cons_res,int satisfaction, int num,int gridX, int gridY) {
-        super(id, nom, "SalleCours", capacite,cons_res, satisfaction, gridX, gridY);
+        super(id, nom, "SalleCours", capacite,cons_res, 10, gridX, gridY);
         this.num=num;
 
     }

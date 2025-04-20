@@ -1,15 +1,13 @@
 package org.example.demo;
+import javafx.scene.control.*;
+import javafx.scene.layout.VBox;
+import javafx.stage.Modality;
 import org.example.demo.Models.*;
 
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.*;
-import javafx.scene.control.Button;
-import javafx.scene.control.ToggleButton;
-import javafx.scene.control.ToggleGroup;
-import javafx.scene.control.Tooltip;
-import javafx.scene.control.Alert;
 import javafx.scene.input.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -328,6 +326,16 @@ public class Grid3D extends Application {
         labBtn.setTooltip(new Tooltip("Place a laboratory"));
         labBtn.setToggleGroup(buildingGroup);
         labBtn.setOnAction(e -> currentBuildingType = labBtn.isSelected() ? BuildingType.LABORATOIRE : BuildingType.NONE);
+        Button simBtn = new Button("\uD83D\uDCBB simulation");
+        styleButton(simBtn, "#00ba37");
+        simBtn.setTooltip(new Tooltip("simulate event"));
+        simBtn.setOnAction(
+                e -> {
+                    Evenement event = Evenement.genererEvenementAleatoire(c.getId());
+                    showAlert(event.getTitre(),event.getDescription());
+                }
+        );
+
 
         Button clearBtn = new Button("🧹 Clear");
         styleButton(clearBtn, "#fab1a0");
@@ -349,7 +357,8 @@ public class Grid3D extends Application {
         saveBtn.setTooltip(new Tooltip("Save campus to database"));
         saveBtn.setOnAction(e -> saveCampusToDatabase());
 
-        toolbar.getChildren().addAll(backButton, salleBtn, biblioBtn, cafeBtn, labBtn, clearBtn, saveBtn);
+
+        toolbar.getChildren().addAll(backButton, salleBtn, biblioBtn, cafeBtn, labBtn,simBtn, clearBtn, saveBtn);
         return toolbar;
     }
 
@@ -431,6 +440,9 @@ public class Grid3D extends Application {
             Laboratoire lab = (Laboratoire) batiment;
             // Add lab-specific details if available
         }
+        Button managePeopleButton = new Button("Gérer Personnes");
+        managePeopleButton.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white;");
+        managePeopleButton.setOnAction(e -> openPersonManagementDialog(batiment.getId()));
 
         // Delete button
         Button deleteButton = new Button("Delete Building");
@@ -449,7 +461,7 @@ public class Grid3D extends Application {
         // Button container
         HBox buttons = new HBox(10);
         buttons.setAlignment(Pos.CENTER_RIGHT);
-        buttons.getChildren().addAll(deleteButton, closeButton);
+        buttons.getChildren().addAll(managePeopleButton,deleteButton, closeButton);
 
         // Add all elements to the content
         content.getChildren().addAll(
@@ -464,9 +476,85 @@ public class Grid3D extends Application {
         dialog.initOwner(scene.getWindow());
         dialog.show();
     }
+    private void openPersonManagementDialog(int batimentId) {
+        Stage dialog = new Stage();
+        dialog.setTitle("Ajouter Étudiant ou Professeur");
+
+        VBox content = new VBox(10);
+        content.setPadding(new Insets(20));
+
+        // Nom commun
+        TextField nomField = new TextField();
+        nomField.setPromptText("Nom");
+
+        ComboBox<String> typeCombo = new ComboBox<>();
+        typeCombo.getItems().addAll("Etudiant", "Professeur","None");
+        typeCombo.setValue("Etudiant");
+
+        TextField filiereField = new TextField();
+        filiereField.setPromptText("Filière");
+
+        TextField matiereField = new TextField();
+        matiereField.setPromptText("Matière enseignée");
+        matiereField.setVisible(false);
+
+        typeCombo.setOnAction(e -> {
+            boolean isEtudiant = typeCombo.getValue().equals("Etudiant");
+            filiereField.setVisible(isEtudiant);
+            matiereField.setVisible(!isEtudiant);
+        });
+
+        Button saveButton = new Button("Enregistrer");
+        saveButton.setOnAction(e -> {
+            String nom = nomField.getText();
+            String type = typeCombo.getValue();
+            String filiere = filiereField.getText();
+            String matiere = matiereField.getText();
+
+            savePersonToDatabase(nom, type, filiere, matiere, batimentId);
+            dialog.close();
+            showAlert("Succès", type + " ajouté avec succès !");
+        });
+
+        content.getChildren().addAll(
+                new Label("Nom :"), nomField,
+                new Label("Type :"), typeCombo,
+                filiereField,
+                matiereField,
+                saveButton
+        );
+
+        Scene scene = new Scene(content, 300, 300);
+        dialog.setScene(scene);
+        dialog.initModality(Modality.APPLICATION_MODAL);
+        dialog.showAndWait();
+    }
+    private void savePersonToDatabase(String nom, String type, String filiere, String matiere, int batimentId) {
+        String sql = "INSERT INTO personnes (nom, type, filiere, heures_cours, satisfaction, matiere_enseignee, disponibilite, batiment_id) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setString(1, nom);
+            pstmt.setString(2, type);
+            pstmt.setString(3, type.equals("Etudiant") ? filiere : null);
+            pstmt.setInt(4, type.equals("Etudiant") ? 0 : 8);
+            pstmt.setInt(5, 50);
+            pstmt.setString(6, type.equals("Professeur") ? matiere : null);
+            pstmt.setBoolean(7, true);
+            pstmt.setInt(8, batimentId);
+
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            showAlert("Erreur", "Impossible d'ajouter la personne à la base sauvgarder les batiment avant.");
+        }
+    }
+
+
 
     private void deleteBuilding(int id,int gridX, int gridZ) {
-        // Remove the building from the visual representation
         buildingsGroup.getChildren().removeIf(building -> {
             if (building.getUserData() instanceof GridCoordinate) {
                 GridCoordinate buildingCoord = (GridCoordinate) building.getUserData();
@@ -475,15 +563,12 @@ public class Grid3D extends Application {
             return false;
         });
 
-        // Find and remove the Batiment from our model list
         batiments.removeIf(batiment ->
                 batiment.getGridX() == gridX &&
                         batiment.getGridZ() == gridZ);
 
-        // Clear the grid position
         buildingGrid[gridX][gridZ] = BuildingType.NONE;
 
-        // Update campus state
         deleteBuildingFromDatabase(id);
         updateCampusState();
 
@@ -491,7 +576,20 @@ public class Grid3D extends Application {
     }
     private void deleteBuildingFromDatabase(int id) {
         String sql = "DELETE FROM batiments WHERE id = ?";
+        String sql2 = "DELETE FROM personnes WHERE batiment_id = ?";
         Connection conn = DBConnection.connect();
+        try (PreparedStatement pstmt = conn.prepareStatement(sql2)) {
+            pstmt.setInt(1, id);
+            int rows = pstmt.executeUpdate();
+            if (rows == 0) {
+                System.out.println("No person found in the database at (" + id + ", " + id + ")");
+            } else {
+                System.out.println("person at (" + id + ", " + id + ") deleted from the database.");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            showAlert("Database Error", "Could not delete person from the database.");
+        }
         try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setInt(1, id);
             int rows = pstmt.executeUpdate();
@@ -504,6 +602,7 @@ public class Grid3D extends Application {
             e.printStackTrace();
             showAlert("Database Error", "Could not delete building from the database.");
         }
+
     }
 
 
@@ -571,7 +670,6 @@ public class Grid3D extends Application {
                                 batiment.getGridZ() == coord.z);
             }
 
-            // Place le nouveau bâtiment
             showBuildingInfoDialog(coord.x, coord.z, currentBuildingType);
         }
     }
@@ -580,23 +678,18 @@ public class Grid3D extends Application {
         // Update grid state
         buildingGrid[gridX][gridZ] = type;
 
-        // Calculate world position based on grid position
         double worldX = (gridX - gridSize/2) * cellSize;
         double worldZ = (gridZ - gridSize/2) * cellSize;
 
-        // Create both the visual 3D box and the model instance
         Batiment batimentModel = createBatimentModel(gridX, gridZ, type, name);
         Box buildingVisual = createBuildingVisual(type, floors);
 
-        // Add the model to our list
         batiments.add(batimentModel);
 
-        // Set up the visual representation
         buildingVisual.setTranslateX(worldX);
         buildingVisual.setTranslateZ(worldZ);
         buildingVisual.setUserData(new GridCoordinate(gridX, gridZ));
 
-        // Store reference to the model in the visual object
         buildingVisual.getProperties().put("model", batimentModel);
 
         buildingsGroup.getChildren().add(buildingVisual);
@@ -604,30 +697,23 @@ public class Grid3D extends Application {
 
     // Create the actual Batiment model object
     private Batiment createBatimentModel(int gridX, int gridZ, BuildingType type, String name) {
-        // Generate an ID (in a real app, this would likely come from the database)
-        int id = 0; // Will be set by database on insert
+        int id = 0;
 
-        // Capacity is calculated based on floors (arbitrary formula for example)
-        int capacity = 25;
-
-        // Consumption depends on building type and size
         int consumption = 10;
 
-        // Default satisfaction impact
         int satisfaction = 5;
 
-        // Create the appropriate subclass based on type
         switch (type) {
             case SALLE:
-                return new SalleCours(id, name, capacity, consumption, satisfaction, 1, gridX, gridZ);
+                return new SalleCours(id, name, 25, consumption, satisfaction, 1, gridX, gridZ);
             case BIBLIOTHEQUE:
-                return new Bibliotheque(id, name, capacity, consumption, gridX, gridZ);
+                return new Bibliotheque(id, name, 20, consumption, gridX, gridZ);
             case CAFE:
-                return new Cafeteria(id, name, capacity, consumption, gridX, gridZ);
+                return new Cafeteria(id, name, 100, consumption, gridX, gridZ);
             case LABORATOIRE:
-                return new Laboratoire(id, name, capacity, consumption, gridX, gridZ);
+                return new Laboratoire(id, name, 20, consumption, gridX, gridZ);
             default:
-                return new Batiment(id, name, "Generic", capacity, consumption, satisfaction, gridX, gridZ);
+                return new Batiment(id, name, "Generic", 10, consumption, satisfaction, gridX, gridZ);
         }
     }
 
@@ -635,12 +721,11 @@ public class Grid3D extends Application {
     private Box createBuildingVisual(BuildingType type, int floors) {
         double width = cellSize * 0.8;
         double depth = cellSize * 0.8;
-        double baseHeight = 20; // Base height per floor
+        double baseHeight = 20;
         double height = floors * baseHeight;
 
         PhongMaterial material = new PhongMaterial();
 
-        // Set color based on building type
         Color color = buildingColors.get(type);
         if (color != null) {
             material.setDiffuseColor(color);
@@ -682,7 +767,6 @@ public class Grid3D extends Application {
         Stage dialog = new Stage();
         dialog.setTitle("Enter Building Information");
 
-        // UI Elements
         javafx.scene.control.Label nameLabel = new javafx.scene.control.Label("Building Name:");
         javafx.scene.control.TextField nameField = new javafx.scene.control.TextField();
         nameField.setText(type.toString() + " " + (batiments.size() + 1)); // Default name
@@ -691,7 +775,6 @@ public class Grid3D extends Application {
         javafx.scene.control.TextField floorsField = new javafx.scene.control.TextField();
         floorsField.setText("1"); // Default value
 
-        // Add specific fields based on building type
         javafx.scene.control.Label specificLabel = null;
         javafx.scene.control.TextField specificField = null;
 
@@ -735,10 +818,8 @@ public class Grid3D extends Application {
             // Specific field value (if applicable)
             String specificValue = finalSpecificField != null ? finalSpecificField.getText() : "";
 
-            // Store this data in your model
             placeBuilding(gridX, gridZ, type, name, floors);
 
-            // Optionally update the campus (if needed)
             updateCampusState();
 
             dialog.close();
@@ -769,7 +850,6 @@ public class Grid3D extends Application {
         dialog.show();
     }
 
-    // Helper method to update the campus state after changes
     private void updateCampusState() {
         if (c != null) {
             c.setBatiments(batiments);
@@ -832,7 +912,6 @@ public class Grid3D extends Application {
             }
 
 
-            // Delete existing buildings if updating
             if (c.getId() > 0) {
                 try (PreparedStatement deleteStmt = conn.prepareStatement(
                         "DELETE FROM batiments WHERE campus_id = ?")) {
@@ -841,7 +920,6 @@ public class Grid3D extends Application {
                 }
             }
 
-            // Batch insert new buildings
             if (!batiments.isEmpty()) {
                 Ressource totalRessources = c.getRessources();
                 try (PreparedStatement batimentStmt = conn.prepareStatement(
@@ -877,6 +955,25 @@ public class Grid3D extends Application {
                                 totalRessources.getEau() +batiment.getCons_res(),
                                 totalRessources.getEspace() + batiment.getCons_res()
                         );
+                        try (PreparedStatement campStmt = conn.prepareStatement(
+                                "UPDATE campus SET satisfaction = ? WHERE id = ?")) {
+                            String sql = "SELECT satisfaction from campus where id = ?";
+                            int sf = batiment.getSatisfaction();
+                            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                                stmt.setInt(1, c.getId());
+                                ResultSet rs = stmt.executeQuery();
+                                if (rs.next()) {
+                                    sf= sf+rs.getInt(1);
+                                }
+                            }
+
+
+
+                            campStmt.setDouble(1, sf);
+                            campStmt.setDouble(2, c.getId());
+
+                            campStmt.executeUpdate();
+                        }
                     }
                     try (PreparedStatement resStmt = conn.prepareStatement(
                             "UPDATE ressources SET wifi = ?, electricite = ?, eau = ?, espace = ? WHERE campus_id = ?")) {
@@ -890,6 +987,8 @@ public class Grid3D extends Application {
 
                         resStmt.executeUpdate();
                     }
+
+
 
 
                     int[] results = batimentStmt.executeBatch();
@@ -906,7 +1005,6 @@ public class Grid3D extends Application {
         }
     }
 
-    // Helper method to show alerts
     private void showAlert(String title, String content) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle(title);

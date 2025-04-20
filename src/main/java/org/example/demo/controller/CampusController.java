@@ -1,5 +1,10 @@
 package org.example.demo.controller;
+import java.io.File;
 
+import javafx.geometry.Side;
+import javafx.scene.chart.PieChart;
+import javafx.scene.control.Alert;
+import javafx.stage.FileChooser;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.geometry.Insets;
@@ -12,16 +17,24 @@ import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
+import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDFont;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.example.demo.CampusUI;
 import org.example.demo.DBConnection;
 import org.example.demo.Grid3D;
 import org.example.demo.Models.*;
 import org.example.demo.auth.LoginApp;
 
+import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -247,50 +260,46 @@ public class CampusController {
         resourcesGrid.setHgap(20);
         resourcesGrid.setVgap(8);
         resourcesGrid.setPadding(new Insets(5, 0, 10, 0));
-
-        // Add resources to grid - two resources per row
         resourcesGrid.add(createCompactProgressBar("WiFi", stats.getWifi(), "#9b59b6"), 0, 0);
         resourcesGrid.add(createCompactProgressBar("Électricité", stats.getElectricite(), "#f1c40f"), 1, 0);
         resourcesGrid.add(createCompactProgressBar("Eau", stats.getEau(), "#3498db"), 0, 1);
         resourcesGrid.add(createCompactProgressBar("Espace", stats.getEspace(), "#2ecc71"), 1, 1);
-
-        // Set column constraints for equal width
         ColumnConstraints col1 = new ColumnConstraints();
         ColumnConstraints col2 = new ColumnConstraints();
         col1.setPercentWidth(50);
         col2.setPercentWidth(50);
         resourcesGrid.getColumnConstraints().addAll(col1, col2);
-
-        // ========== Summary Section ==========
         Label summaryLabel = new Label("Résumé des statistiques");
         summaryLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
-
-        // Create grid for summary stats
         GridPane summaryGrid = new GridPane();
         summaryGrid.setHgap(10);
         summaryGrid.setVgap(5);
         summaryGrid.setPadding(new Insets(5, 0, 10, 0));
-
-        // Using a more compact layout - two columns for summary data
         summaryGrid.add(new Label("Nombre de bâtiments:"), 0, 0);
         summaryGrid.add(new Label(String.valueOf(stats.getBuildingCount())), 1, 0);
         summaryGrid.add(new Label("Capacité totale:"), 0, 1);
         summaryGrid.add(new Label(String.valueOf(stats.getTotalCapacity())), 1, 1);
         summaryGrid.add(new Label("Consommation totale:"), 0, 2);
         summaryGrid.add(new Label(String.valueOf(stats.getTotalConsumption())), 1, 2);
+        Button exportBtn = createButton("Exporter PDF", "#27ae60");
+        exportBtn.setPrefWidth(100);
+        exportBtn.setOnAction(e -> generatePDFReport(stats, campus.getNom()));
 
         // Close button
         Button closeBtn = createButton("Fermer", "#7f8c8d");
         closeBtn.setPrefWidth(100);
-        HBox buttonBox = new HBox(closeBtn);
+        HBox buttonBox = new HBox(exportBtn,closeBtn);
         buttonBox.setAlignment(Pos.CENTER);
         buttonBox.setPadding(new Insets(5, 0, 0, 0));
+        PieChart resourceChart = createResourcePieChart(stats);
+
 
         // Add all components to the root
         root.getChildren().addAll(
                 mainStatsBox,
                 new Separator(),
                 resourcesTitle,
+                resourceChart,
                 resourcesGrid,
                 new Separator(),
                 summaryLabel,
@@ -303,8 +312,29 @@ public class CampusController {
         dialogStage.setScene(scene);
 
         closeBtn.setOnAction(e -> dialogStage.close());
+        dialogStage.setHeight(700);
         dialogStage.showAndWait();
     }
+    private PieChart createResourcePieChart(CampusStats stats) {
+        PieChart pieChart = new PieChart();
+        pieChart.setTitle("Répartition des Ressources");
+
+        pieChart.getData().addAll(
+                new PieChart.Data("WiFi", stats.getWifi()),
+                new PieChart.Data("Électricité", stats.getElectricite()),
+                new PieChart.Data("Eau", stats.getEau()),
+                new PieChart.Data("Espace", stats.getEspace())
+        );
+
+        pieChart.setLegendSide(Side.RIGHT);
+        pieChart.setLabelsVisible(true);
+        pieChart.setClockwise(true);
+        pieChart.setPrefSize(100, 100);
+
+
+        return pieChart;
+    }
+
     private HBox createProgressBarWithLabel(String label, double value, String color) {
         HBox container = new HBox(10);
         container.setAlignment(Pos.CENTER_LEFT);
@@ -344,6 +374,197 @@ public class CampusController {
         bar.setStyle("-fx-accent: " + color + ";");
         return bar;
     }
+    private CampusStats calculateCampusStats(Campus campus) {
+        CampusStats stats = new CampusStats();
+        int totalSatisfaction = 0;
+
+        try (Connection conn = DBConnection.connect()) {
+            String countSql = "SELECT COUNT(*) FROM batiments WHERE campus_id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(countSql)) {
+                stmt.setInt(1, campus.getId());
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    stats.setBuildingCount(rs.getInt(1));
+                }
+            }
+
+            String statsSql = "SELECT SUM(capacite) as total_capacity, " +
+                    "SUM(consommation_ressources) as total_consumption, " +
+                    "SUM(impact_satisfaction) as total_satisfaction " +
+                    "FROM batiments WHERE campus_id = ?";
+            String sql = "SELECT satisfaction from campus where id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setInt(1, campus.getId());
+                ResultSet rs1 = stmt.executeQuery();
+                if (rs1.next()) {
+                    totalSatisfaction = rs1.getInt("satisfaction");
+
+                }
+            }
+
+            try (PreparedStatement stmt = conn.prepareStatement(statsSql)) {
+                stmt.setInt(1, campus.getId());
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    int totalCapacity = rs.getInt("total_capacity");
+                    int totalConsumption = rs.getInt("total_consumption");
+
+                    stats.setTotalCapacity(totalCapacity);
+                    stats.setTotalConsumption(totalConsumption);
+
+                    double maxConsumption = stats.getBuildingCount() * 100;
+                    stats.setResourceConsumption(Math.min(1.0, totalConsumption / Math.max(1.0, maxConsumption)));
+
+                    double maxSatisfaction = stats.getBuildingCount() * 100;
+                    stats.setSatisfactionLevel(Math.min(1.0, totalSatisfaction / Math.max(1.0, maxSatisfaction)));
+
+                    String studentCountSql = "SELECT COUNT(*) FROM personnes s WHERE campus_id = ?";
+                    try (PreparedStatement countStmt = conn.prepareStatement(studentCountSql)) {
+                        countStmt.setInt(1, campus.getId());
+                        ResultSet countRs = countStmt.executeQuery();
+                        if (countRs.next()) {
+                            int studentCount = countRs.getInt(1);
+                            stats.setCapacityUtilization(Math.min(1.0, studentCount / Math.max(1.0, totalCapacity)));
+                        } else {
+                            // If no students, use random value for demo
+                            stats.setCapacityUtilization(Math.random() * 0.8);
+                        }
+                    } catch (SQLException e) {
+                        // If table doesn't exist, use random value for demo
+                        stats.setCapacityUtilization(Math.random() * 0.8);
+                    }
+                }
+            }
+
+            // Fetch resource data from ressources table
+            String resourcesSql = "SELECT wifi, electricite, eau, espace FROM ressources WHERE campus_id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(resourcesSql)) {
+                stmt.setInt(1, campus.getId());
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    stats.setWifi(rs.getInt("wifi"));
+                    stats.setElectricite(rs.getInt("electricite"));
+                    stats.setEau(rs.getInt("eau"));
+                    stats.setEspace(rs.getInt("espace"));
+                } else {
+                    System.out.println("no resources found");
+                }
+            } catch (SQLException e) {
+                System.out.println(e.getMessage());
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+            System.out.println(e.getMessage());
+        }
+
+        return stats;
+    }
+
+    private void generatePDFReport(CampusStats stats, String campusName) {
+        try (PDDocument document = new PDDocument()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+
+            try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
+                // PDF Styling Configuration
+                float margin = 50;
+                float yPosition = 700;
+                PDFont titleFont = PDType1Font.HELVETICA_BOLD;
+                PDType1Font bodyFont = PDType1Font.HELVETICA;
+                float titleSize = 16;
+                float headingSize = 14;
+                float bodySize = 12;
+
+                // Title
+                addText(contentStream, titleFont, titleSize, margin, yPosition,
+                        "Statistiques du Campus: " + campusName);
+                yPosition -= 30;
+
+                addSectionHeading(contentStream, headingSize, margin, yPosition, "Statistiques principales:");
+                yPosition -= 25;
+                addKeyValue(contentStream, bodyFont, bodySize, margin, yPosition,
+                        "Consommation de ressources", String.format("%.1f%%", stats.getResourceConsumption() * 100));
+                yPosition -= 15;
+                addKeyValue(contentStream, bodyFont, bodySize, margin, yPosition,
+                        "Niveau de satisfaction", String.format("%.1f%%", stats.getSatisfactionLevel() * 100));
+                yPosition -= 15;
+                addKeyValue(contentStream, bodyFont, bodySize, margin, yPosition,
+                        "Utilisation de la capacité", String.format("%.1f%%", stats.getCapacityUtilization() * 100));
+                yPosition -= 25;
+
+                // Resources
+                addSectionHeading(contentStream, headingSize, margin, yPosition, "Ressources du Campus:");
+                yPosition -= 25;
+                addKeyValue(contentStream, bodyFont, bodySize, margin, yPosition, "WiFi", stats.getWifi() + "%");
+                yPosition -= 15;
+                addKeyValue(contentStream, bodyFont, bodySize, margin, yPosition, "Électricité", stats.getElectricite() + "%");
+                yPosition -= 15;
+                addKeyValue(contentStream, bodyFont, bodySize, margin, yPosition, "Eau", stats.getEau() + "%");
+                yPosition -= 15;
+                addKeyValue(contentStream, bodyFont, bodySize, margin, yPosition, "Espace", stats.getEspace() + "%");
+                yPosition -= 25;
+
+                // Summary
+                addSectionHeading(contentStream, headingSize, margin, yPosition, "Résumé des statistiques:");
+                yPosition -= 25;
+                addKeyValue(contentStream, bodyFont, bodySize, margin, yPosition,
+                        "Bâtiments", String.valueOf(stats.getBuildingCount()));
+                yPosition -= 15;
+                addKeyValue(contentStream, bodyFont, bodySize, margin, yPosition,
+                        "Capacité totale", String.valueOf(stats.getTotalCapacity()));
+                yPosition -= 15;
+                addKeyValue(contentStream, bodyFont, bodySize, margin, yPosition,
+                        "Consommation totale", String.valueOf(stats.getTotalConsumption()));
+            }
+
+            // Save dialog
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Enregistrer le rapport");
+            fileChooser.setInitialFileName("statistiques_" + campusName + ".pdf");
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF", "*.pdf"));
+
+            File file = fileChooser.showSaveDialog(null);
+            if (file != null) {
+                document.save(file);
+            }
+        } catch (IOException e) {
+           System.out.println( "Erreur lors de la génération du PDF: " + e.getMessage());
+        }
+    }
+
+    // Helper methods
+    private void addText(PDPageContentStream stream, PDFont font, float size, float x, float y, String text)
+            throws IOException {
+        stream.beginText();
+        stream.setFont(font, size);
+        stream.newLineAtOffset(x, y);
+        stream.showText(text);
+        stream.endText();
+    }
+
+    private void addSectionHeading(PDPageContentStream stream, float size, float x, float y, String text)
+            throws IOException {
+        addText(stream, PDType1Font.HELVETICA_BOLD, size, x, y, text);
+    }
+
+    private void addKeyValue(PDPageContentStream stream, PDFont font, float size, float x, float y,
+                             String key, String value) throws IOException {
+        stream.beginText();
+        stream.setFont(font, size);
+        stream.newLineAtOffset(x, y);
+        stream.showText(key + ": " + value);
+        stream.endText();
+    }
+
+    private void showAlert(Alert.AlertType type, String title, String message) {
+        Alert alert = new Alert(type);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(message);
+        alert.showAndWait();
+    }
+
 
     private VBox createDialogPane(String title) {
         VBox root = new VBox(10);
@@ -367,6 +588,12 @@ public class CampusController {
             // First delete related batiments
             String deleteBatiments = "DELETE FROM batiments WHERE campus_id = ?";
             try (PreparedStatement batStmt = conn.prepareStatement(deleteBatiments)) {
+                batStmt.setInt(1, campus.getId());
+                batStmt.executeUpdate();
+            }
+
+            String deleteres = "DELETE FROM ressources WHERE campus_id = ?";
+            try (PreparedStatement batStmt = conn.prepareStatement(deleteres)) {
                 batStmt.setInt(1, campus.getId());
                 batStmt.executeUpdate();
             }
@@ -407,107 +634,6 @@ public class CampusController {
             e.printStackTrace();
             showError("Erreur base de données", "Impossible de modifier le campus: " + e.getMessage());
         }
-    }
-
-
-    private CampusStats calculateCampusStats(Campus campus) {
-        CampusStats stats = new CampusStats();
-
-        try (Connection conn = DBConnection.connect()) {
-            // Count buildings
-            String countSql = "SELECT COUNT(*) FROM batiments WHERE campus_id = ?";
-            try (PreparedStatement stmt = conn.prepareStatement(countSql)) {
-                stmt.setInt(1, campus.getId());
-                ResultSet rs = stmt.executeQuery();
-                if (rs.next()) {
-                    stats.setBuildingCount(rs.getInt(1));
-                }
-            }
-
-            // Get total capacity and consumption
-            String statsSql = "SELECT SUM(capacite) as total_capacity, " +
-                    "SUM(consommation_ressources) as total_consumption, " +
-                    "SUM(impact_satisfaction) as total_satisfaction " +
-                    "FROM batiments WHERE campus_id = ?";
-
-            try (PreparedStatement stmt = conn.prepareStatement(statsSql)) {
-                stmt.setInt(1, campus.getId());
-                ResultSet rs = stmt.executeQuery();
-                if (rs.next()) {
-                    int totalCapacity = rs.getInt("total_capacity");
-                    int totalConsumption = rs.getInt("total_consumption");
-                    int totalSatisfaction = rs.getInt("total_satisfaction");
-
-                    stats.setTotalCapacity(totalCapacity);
-                    stats.setTotalConsumption(totalConsumption);
-
-                    // Calculate normalized values (0.0-1.0) for progress bars
-                    double maxConsumption = stats.getBuildingCount() * 100; // Assuming max 100 per building
-                    stats.setResourceConsumption(Math.min(1.0, totalConsumption / Math.max(1.0, maxConsumption)));
-
-                    double maxSatisfaction = stats.getBuildingCount() * 100; // Assuming max 100 per building
-                    stats.setSatisfactionLevel(Math.min(1.0, totalSatisfaction / Math.max(1.0, maxSatisfaction)));
-
-                    // Calculate capacity utilization (assume 80% is target)
-                    String studentCountSql = "SELECT COUNT(*) FROM personnes WHERE campus_id = ?";
-                    try (PreparedStatement countStmt = conn.prepareStatement(studentCountSql)) {
-                        countStmt.setInt(1, campus.getId());
-                        ResultSet countRs = countStmt.executeQuery();
-                        if (countRs.next()) {
-                            int studentCount = countRs.getInt(1);
-                            stats.setCapacityUtilization(Math.min(1.0, studentCount / Math.max(1.0, totalCapacity)));
-                        } else {
-                            // If no students, use random value for demo
-                            stats.setCapacityUtilization(Math.random() * 0.8);
-                        }
-                    } catch (SQLException e) {
-                        // If table doesn't exist, use random value for demo
-                        stats.setCapacityUtilization(Math.random() * 0.8);
-                    }
-                }
-            }
-
-            // Fetch resource data from ressources table
-            String resourcesSql = "SELECT wifi, electricite, eau, espace FROM ressources WHERE campus_id = ?";
-            try (PreparedStatement stmt = conn.prepareStatement(resourcesSql)) {
-                stmt.setInt(1, campus.getId());
-                ResultSet rs = stmt.executeQuery();
-                if (rs.next()) {
-                    stats.setWifi(rs.getInt("wifi"));
-                    stats.setElectricite(rs.getInt("electricite"));
-                    stats.setEau(rs.getInt("eau"));
-                    stats.setEspace(rs.getInt("espace"));
-                } else {
-                    // If no resources found, set default values
-                    stats.setWifi(50);
-                    stats.setElectricite(50);
-                    stats.setEau(50);
-                    stats.setEspace(50);
-                }
-            } catch (SQLException e) {
-                // If table doesn't exist or query fails, set default values
-                stats.setWifi(50);
-                stats.setElectricite(50);
-                stats.setEau(50);
-                stats.setEspace(50);
-            }
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-            // If there's an error, use sample values
-            stats.setBuildingCount((int)(Math.random() * 10) + 1);
-            stats.setTotalCapacity((int)(Math.random() * 1000) + 100);
-            stats.setTotalConsumption((int)(Math.random() * 500) + 50);
-            stats.setResourceConsumption(Math.random() * 0.8);
-            stats.setSatisfactionLevel(Math.random() * 0.9);
-            stats.setCapacityUtilization(Math.random() * 0.7);
-            stats.setWifi(50);
-            stats.setElectricite(50);
-            stats.setEau(50);
-            stats.setEspace(50);
-        }
-
-        return stats;
     }
 
 
@@ -746,13 +872,7 @@ public class CampusController {
         showAlert(Alert.AlertType.INFORMATION, title, message);
     }
 
-    private void showAlert(Alert.AlertType type, String title, String message) {
-        Alert alert = new Alert(type);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
-    }
+
 
     @FXML
     private void hoverButton(MouseEvent event) {
@@ -783,17 +903,13 @@ public class CampusController {
             currentStage.close();
         }
     }
-
-    // Inner class to hold campus statistics
     private class CampusStats {
         private int buildingCount;
         private int totalCapacity;
         private int totalConsumption;
-        private double resourceConsumption; // 0.0-1.0 for progress bar
-        private double satisfactionLevel;   // 0.0-1.0 for progress bar
-        private double capacityUtilization; // 0.0-1.0 for progress bar
-
-        // Resource statistics
+        private double resourceConsumption;
+        private double satisfactionLevel;
+        private double capacityUtilization;
         private int wifi;
         private int electricite;
         private int eau;
