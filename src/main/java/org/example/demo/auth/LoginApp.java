@@ -43,16 +43,13 @@ public class LoginApp extends Application {
         loginButton.setOnMouseEntered(e -> loginButton.setStyle("-fx-background-color: #4a7ef0; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 25; -fx-padding: 10 15;"));
         loginButton.setOnMouseExited(e -> loginButton.setStyle("-fx-background-color: #5865F2; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 25; -fx-padding: 10 15;"));
 
-        // Message label
         Label messageLabel = new Label();
         messageLabel.setStyle("-fx-text-fill: white; -fx-font-size: 14px;");
 
-        // Link to registration
         Hyperlink registerLink = new Hyperlink("Don't have an account?");
         registerLink.setStyle("-fx-text-fill: #5865F2;");
         registerLink.setFont(Font.font("Helvetica", 13));
 
-        // Login button action
         loginButton.setOnAction(e -> {
             String email = emailField.getText();
             String password = passwordField.getText();
@@ -67,11 +64,11 @@ public class LoginApp extends Application {
                     String sql = "SELECT * FROM users WHERE email = ? AND password = ?";
                     try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                         stmt.setString(1, email);
-                        stmt.setString(2, password); // TODO: hash in production
+                        stmt.setString(2, password);
                         ResultSet rs = stmt.executeQuery();
 
                         if (rs.next()) {
-                            int userId = rs.getInt("id"); // or whatever column name for user id
+                            int userId = rs.getInt("id");
                             String name = rs.getString("name");
                             String emailResult = rs.getString("email");
                             UserSession.createInstance(userId);
@@ -101,7 +98,6 @@ public class LoginApp extends Application {
 
         });
 
-        // Action for register link
         registerLink.setOnAction(e -> {
             RegisterApp registerApp = new RegisterApp();
             try {

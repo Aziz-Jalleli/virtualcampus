@@ -10,6 +10,7 @@ module org.example.demo {
     requires org.fxyz3d.importers;
     requires org.fxyz3d.core;
     requires java.sql;
+    requires org.apache.pdfbox;
 
     exports org.example.demo.auth; // 👈 rends ton package visible à JavaFX
 
